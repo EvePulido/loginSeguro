@@ -3,6 +3,7 @@ const bodyParser = require('body-parser');
 const bcrypt = require('bcrypt');
 const path = require('path');
 const fs = require('fs');
+const session = require('express-session');
 
 const app = express();
 const port = 3000;
@@ -13,6 +14,14 @@ app.use(bodyParser.urlencoded({ extended: true }));
 // Servir archivos estáticos desde la carpeta 'public'
 app.use(express.static(path.join(__dirname, 'public')));
 
+// Configuración de la sesión
+app.use(session({
+    secret: 'a_secret_key_that_is_very_secret_and_long', // Cambia esto por una clave secreta real y segura
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false } // Para desarrollo. En producción, usa true y HTTPS
+}));
+
 // "Base de datos" en memoria para almacenar usuarios
 const users = {}; // Objeto para almacenar { username: { passwordHash, salt } }
 
@@ -20,6 +29,16 @@ const users = {}; // Objeto para almacenar { username: { passwordHash, salt } }
 const loginAttempts = {};
 const MAX_ATTEMPTS = 5;
 const LOCK_TIME = 2 * 60 * 1000; // 2 minutos
+
+// Middleware para proteger rutas
+const checkAuth = (req, res, next) => {
+    if (req.session.user) {
+        next();
+    } else {
+        res.redirect('/login.html');
+    }
+};
+
 
 // Ruta principal que ahora redirige a la página de login
 app.get('/', (req, res) => {
@@ -53,8 +72,8 @@ app.post('/register', async (req, res) => {
         users[username] = { passwordHash: hashedPassword };
         console.log('Usuario registrado:', users); // Para depuración
 
-        // 5. Redirigir a la página de login
-        res.redirect('/login.html');
+        // 5. Redirigir a la página de login con un mensaje de éxito
+        res.redirect('/login.html?status=registered');
 
     } catch (error) {
         console.error(error);
@@ -76,7 +95,7 @@ app.post('/login', async (req, res) => {
         }
         // -----------------------------------------
 
-        const genericError = () => {
+        const handleError = () => {
             // Incrementar intentos fallidos
             if (!loginAttempts[username]) {
                 loginAttempts[username] = { attempts: 1, lockUntil: 0 };
@@ -91,22 +110,23 @@ app.post('/login', async (req, res) => {
             }
             
             console.log('Intentos fallidos para', username, ':', loginAttempts[username]); // Para depuración
-            res.redirect('/error.html');
+            res.redirect('/login.html?error=invalid');
         };
 
         if (!user) {
-            return genericError();
+            return handleError();
         }
 
         const isMatch = await bcrypt.compare(password, user.passwordHash);
 
         if (isMatch) {
-            // Éxito: resetear contador de intentos y redirigir a la bienvenida dinámica
+            // Éxito: resetear contador de intentos y crear la sesión
             delete loginAttempts[username];
-            res.redirect(`/welcome?user=${encodeURIComponent(username)}`);
+            req.session.user = { username: username };
+            res.redirect('/login.html?status=loginsuccess');
         } else {
             // Fallo: registrar intento y mostrar error
-            return genericError();
+            return handleError();
         }
 
     } catch (error) {
@@ -115,15 +135,21 @@ app.post('/login', async (req, res) => {
     }
 });
 
-// Ruta para la página de bienvenida dinámica
-app.get('/welcome', (req, res) => {
-    const username = req.query.user;
-    const user = users[username];
+// Ruta de logout
+app.get('/logout', (req, res) => {
+    req.session.destroy(err => {
+        if (err) {
+            return res.status(500).send('No se pudo cerrar la sesión.');
+        }
+        res.redirect('/login.html');
+    });
+});
 
-    if (!user) {
-        // Si no hay usuario o el usuario no existe, redirigir al login
-        return res.redirect('/login.html');
-    }
+
+// Ruta para la página de bienvenida dinámica, ahora protegida
+app.get('/welcome', checkAuth, (req, res) => {
+    const username = req.session.user.username;
+    const user = users[username];
 
     // Leer el template de bienvenida
     fs.readFile(path.join(__dirname, 'public', 'welcome.html'), 'utf8', (err, data) => {
