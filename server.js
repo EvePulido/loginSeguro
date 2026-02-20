@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt');
 const path = require('path');
 const fs = require('fs');
 const session = require('express-session');
+require('dotenv').config();
 
 const app = express();
 const port = 3000;
@@ -55,12 +56,12 @@ app.post('/register', async (req, res) => {
             return res.status(400).send('Todos los campos son obligatorios.');
         }
         if (password !== confirmPassword) {
-            return res.status(400).send('Las contraseñas no coinciden.');
+            return res.redirect('/register.html?error=mismatch');
         }
 
         // 2. Comprobar si el usuario ya existe
         if (users[username]) {
-            return res.status(400).send('El nombre de usuario ya está en uso.');
+            return res.redirect('/register.html?error=exists');
         }
 
         // 3. Hashing de la contraseña
@@ -70,7 +71,6 @@ app.post('/register', async (req, res) => {
 
         // 4. Almacenar usuario
         users[username] = { passwordHash: hashedPassword };
-        console.log('Usuario registrado:', users); // Para depuración
 
         // 5. Redirigir a la página de login con un mensaje de éxito
         res.redirect('/login.html?status=registered');
@@ -85,8 +85,15 @@ app.post('/register', async (req, res) => {
 app.post('/login', async (req, res) => {
     try {
         const { username, password } = req.body;
-        const user = users[username];
         const now = Date.now();
+
+        // Verificar si es admin
+        if (username === process.env.ADMIN_USERNAME && password === process.env.ADMIN_PASSWORD) {
+            req.session.user = { username: username, role: 'admin' };
+            return res.redirect('/admin');
+        }
+
+        const user = users[username];
 
         // --- Lógica de limitación de intentos ---
         if (loginAttempts[username] && loginAttempts[username].lockUntil > now) {
@@ -108,7 +115,7 @@ app.post('/login', async (req, res) => {
                 loginAttempts[username].lockUntil = now + LOCK_TIME;
                 console.log(`Usuario ${username} bloqueado por ${LOCK_TIME / 1000}s`);
             }
-            
+
             console.log('Intentos fallidos para', username, ':', loginAttempts[username]); // Para depuración
             res.redirect('/login.html?error=invalid');
         };
@@ -122,8 +129,8 @@ app.post('/login', async (req, res) => {
         if (isMatch) {
             // Éxito: resetear contador de intentos y crear la sesión
             delete loginAttempts[username];
-            req.session.user = { username: username };
-            res.redirect('/login.html?status=loginsuccess');
+            req.session.user = { username: username, role: 'user' };
+            res.redirect('/welcome');
         } else {
             // Fallo: registrar intento y mostrar error
             return handleError();
@@ -149,7 +156,6 @@ app.get('/logout', (req, res) => {
 // Ruta para la página de bienvenida dinámica, ahora protegida
 app.get('/welcome', checkAuth, (req, res) => {
     const username = req.session.user.username;
-    const user = users[username];
 
     // Leer el template de bienvenida
     fs.readFile(path.join(__dirname, 'public', 'welcome.html'), 'utf8', (err, data) => {
@@ -160,8 +166,45 @@ app.get('/welcome', checkAuth, (req, res) => {
 
         // Reemplazar los placeholders con los datos reales del usuario
         const personalizedHtml = data
+            .replace(/{{USERNAME}}/g, username);
+
+        res.send(personalizedHtml);
+    });
+});
+
+// Middleware para verificar admin
+const checkAdmin = (req, res, next) => {
+    if (req.session.user && req.session.user.role === 'admin') {
+        next();
+    } else {
+        res.redirect('/login.html');
+    }
+};
+
+// Ruta para el panel de administración
+app.get('/admin', checkAdmin, (req, res) => {
+    const username = req.session.user.username;
+
+    // Generar filas de la tabla
+    let tableRows = '';
+    for (const [user, data] of Object.entries(users)) {
+        tableRows += `<tr>
+            <td>${user}</td>
+            <td>${data.passwordHash}</td>
+        </tr>`;
+    }
+
+    // Leer el template de admin
+    fs.readFile(path.join(__dirname, 'public', 'admin.html'), 'utf8', (err, data) => {
+        if (err) {
+            console.error(err);
+            return res.status(500).send('Error al cargar el panel de administración.');
+        }
+
+        // Reemplazar los placeholders
+        const personalizedHtml = data
             .replace(/{{USERNAME}}/g, username)
-            .replace('{{HASHED_PASSWORD}}', user.passwordHash);
+            .replace('{{TABLE_ROWS}}', tableRows);
 
         res.send(personalizedHtml);
     });
