@@ -25,7 +25,7 @@ Para que el servidor pueda comunicarse con la API de Google de forma privada, gu
 
 **Código implementado:**
 ```env
-RECAPTCHA_SECRET_KEY=6LcP8oUsAAAAAMHsU8fYIoaULHZ4iSSx7C9GeWM0
+RECAPTCHA_SECRET_KEY=
 ```
 *   **Por qué:** Esto evita que la llave secreta sea visible en el código del navegador (frontend), protegiendo tu cuenta de Google de usos no autorizados.
 
