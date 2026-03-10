@@ -16,39 +16,121 @@
 *   **Interfaz moderna:** Diseño responsivo y accesible utilizando Bootstrap 5.
 *   **Retroalimentación visual:** Notificaciones (*toasts* y modales) para informar al usuario sobre el estado de sus acciones (éxito, error, advertencia).
 
-## 🛡️ Implementación de Google reCAPTCHA v3
+## 🛡️ Implementación Detallada de Google reCAPTCHA v3
 
-Se ha integrado reCAPTCHA v3 para asegurar que las interacciones en los formularios de acceso y registro sean realizadas por humanos, sin interrumpir la experiencia del usuario.
+A continuación se describe el proceso técnico de integración paso a paso:
 
-### 1. Configuración de Credenciales (`.env`)
-Se debe configurar la llave secreta proporcionada por Google en el archivo de entorno:
+### Paso 1: Configuración de Seguridad (`.env`)
+Para que el servidor pueda comunicarse con la API de Google de forma privada, guardé tu **Llave Secreta** en el archivo de variables de entorno.
 
+**Código implementado:**
 ```env
-RECAPTCHA_SECRET_KEY=tu_llave_secreta_aqui
+RECAPTCHA_SECRET_KEY=6LcP8oUsAAAAAMHsU8fYIoaULHZ4iSSx7C9GeWM0
 ```
+*   **Por qué:** Esto evita que la llave secreta sea visible en el código del navegador (frontend), protegiendo tu cuenta de Google de usos no autorizados.
 
-### 2. Verificación en el Servidor (`server.js`)
-El servidor valida el token enviado por el cliente consultando la API de Google. Se ha establecido un umbral de confianza de **0.5** (donde 1.0 es un humano y 0.0 es un bot).
+---
 
+### Paso 2: El "Cerebro" de Verificación (`server.js`)
+Creé una función asíncrona llamada `verifyRecaptcha` que se encarga de hablar con los servidores de Google para validar si el usuario es un humano.
+
+**Código implementado:**
 ```javascript
 const verifyRecaptcha = async (token) => {
-    // Consulta a https://www.google.com/recaptcha/api/siteverify
-    // Retorna true si data.score >= 0.5
+    if (!token) {
+        console.log('RECAPTCHA: No se recibió ningún token.');
+        return false;
+    }
+
+    try {
+        const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+        // Petición POST a la API de Google
+        const response = await fetch(`https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+
+        // Logs detallados para que tú veas el funcionamiento en consola
+        console.log('\n--- Verificación de reCAPTCHA ---');
+        console.log(`Resultado: ${data.success ? 'EXITOSO' : 'FALLIDO'}`);
+        console.log(`Puntuación (Score): ${data.score}`); // 1.0 es humano, 0.0 es bot
+        console.log('---------------------------------\n');
+
+        // Retorna true si Google confirma éxito y la puntuación es aceptable (>= 0.5)
+        return data.success && data.score >= 0.5;
+    } catch (error) {
+        console.error('Error verificando reCAPTCHA:', error);
+        return false;
+    }
 };
 ```
 
-Además, el servidor imprime en consola el resultado de cada verificación para monitoreo en tiempo real:
-- **Resultado:** EXITOSO / FALLIDO
-- **Puntuación (Score):** Valor asignado por Google (ej. 0.9)
+---
 
-### 3. Integración en el Frontend
-Se carga el script de Google y se intercepta el envío de los formularios para generar el token de seguridad:
+### Paso 3: Protección de los Formularios (`public/login.html` y `public/register.html`)
+Modifiqué el frontend para que, antes de enviar los datos, le pida un "token de confianza" a Google.
 
+**Código implementado (HTML):**
+Primero, incluí la librería de Google y un campo oculto en el formulario:
+```html
+<!-- Script de Google con tu Llave de Sitio -->
+<script src="https://www.google.com/recaptcha/api.js?render=6LcP8oUsAAAAADZHB-5SX59Ey8qgoMbUS9rBogoB"></script>
+
+<!-- Campo oculto dentro del form -->
+<input type="hidden" name="g-recaptcha-response" id="recaptchaResponse">
+```
+
+**Código implementado (JavaScript):**
+Intercepté el evento de "submit" para generar el token:
 ```javascript
-grecaptcha.execute('tu_llave_de_sitio', {action: 'login/register'}).then(function(token) {
-    document.getElementById('recaptchaResponse').value = token;
-    document.getElementById('formId').submit();
+document.getElementById('loginForm').addEventListener('submit', function(e) {
+    e.preventDefault(); // Detiene el envío normal
+    grecaptcha.ready(function() {
+        // Ejecuta la validación invisible
+        grecaptcha.execute('6LcP8oUsAAAAADZHB-5SX59Ey8qgoMbUS9rBogoB', {action: 'login'}).then(function(token) {
+            // Guarda el token en el campo oculto y envía el formulario
+            document.getElementById('recaptchaResponse').value = token;
+            document.getElementById('loginForm').submit();
+        });
+    });
 });
+```
+
+---
+
+### Paso 4: Validación Obligatoria en las Rutas (`server.js`)
+Actualicé las rutas de `/login` y `/register` para que el reCAPTCHA sea la primera línea de defensa.
+
+**Código implementado (Ejemplo en `/login`):**
+```javascript
+app.post('/login', async (req, res) => {
+    try {
+        // Extraemos el token que viene del campo oculto 'g-recaptcha-response'
+        const { username, password, 'g-recaptcha-response': recaptchaToken } = req.body;
+
+        // Validamos con la función del Paso 2
+        const isHuman = await verifyRecaptcha(recaptchaToken);
+        if (!isHuman) {
+            // Si falla, detenemos todo y avisamos al usuario
+            return res.redirect('/login.html?error=captcha');
+        }
+
+        // ... El resto del código de login sigue aquí ...
+    } catch (error) { /* ... */ }
+});
+```
+
+---
+
+### Paso 5: Mensajes de Error en la Interfaz
+Por último, añadí lógica para que el usuario sepa por qué falló su acceso si el CAPTCHA lo bloquea.
+
+**Código implementado (JavaScript en el HTML):**
+```javascript
+if (error === 'captcha') {
+    message = 'Error en la verificación de seguridad (CAPTCHA).';
+    type = 'danger'; // Color rojo en el aviso de Bootstrap
+}
 ```
 
 ## 🛠️ Tecnologías utilizadas
