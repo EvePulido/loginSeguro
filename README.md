@@ -12,8 +12,44 @@
 *   **Seguridad:**
     *   Protección contra ataques de fuerza bruta (bloqueo temporal tras múltiples intentos fallidos).
     *   Uso de variables de entorno para credenciales sensibles.
+    *   **Google reCAPTCHA v3:** Protección invisible contra bots y scripts automatizados en el inicio de sesión y registro.
 *   **Interfaz moderna:** Diseño responsivo y accesible utilizando Bootstrap 5.
 *   **Retroalimentación visual:** Notificaciones (*toasts* y modales) para informar al usuario sobre el estado de sus acciones (éxito, error, advertencia).
+
+## 🛡️ Implementación de Google reCAPTCHA v3
+
+Se ha integrado reCAPTCHA v3 para asegurar que las interacciones en los formularios de acceso y registro sean realizadas por humanos, sin interrumpir la experiencia del usuario.
+
+### 1. Configuración de Credenciales (`.env`)
+Se debe configurar la llave secreta proporcionada por Google en el archivo de entorno:
+
+```env
+RECAPTCHA_SECRET_KEY=tu_llave_secreta_aqui
+```
+
+### 2. Verificación en el Servidor (`server.js`)
+El servidor valida el token enviado por el cliente consultando la API de Google. Se ha establecido un umbral de confianza de **0.5** (donde 1.0 es un humano y 0.0 es un bot).
+
+```javascript
+const verifyRecaptcha = async (token) => {
+    // Consulta a https://www.google.com/recaptcha/api/siteverify
+    // Retorna true si data.score >= 0.5
+};
+```
+
+Además, el servidor imprime en consola el resultado de cada verificación para monitoreo en tiempo real:
+- **Resultado:** EXITOSO / FALLIDO
+- **Puntuación (Score):** Valor asignado por Google (ej. 0.9)
+
+### 3. Integración en el Frontend
+Se carga el script de Google y se intercepta el envío de los formularios para generar el token de seguridad:
+
+```javascript
+grecaptcha.execute('tu_llave_de_sitio', {action: 'login/register'}).then(function(token) {
+    document.getElementById('recaptchaResponse').value = token;
+    document.getElementById('formId').submit();
+});
+```
 
 ## 🛠️ Tecnologías utilizadas
 

@@ -41,6 +41,40 @@ const checkAuth = (req, res, next) => {
     }
 };
 
+// Función para verificar reCAPTCHA v3
+const verifyRecaptcha = async (token) => {
+    if (!token) {
+        console.log('RECAPTCHA: No se recibió ningún token.');
+        return false;
+    }
+    
+    try {
+        const secretKey = process.env.RECAPTCHA_SECRET_KEY;
+        const response = await fetch(`https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`, {
+            method: 'POST'
+        });
+        const data = await response.json();
+        
+        // Logs detallados para depuración
+        console.log('\n--- Verificación de reCAPTCHA ---');
+        console.log(`Fecha/Hora: ${new Date().toLocaleString()}`);
+        console.log(`Resultado: ${data.success ? 'EXITOSO' : 'FALLIDO'}`);
+        console.log(`Puntuación (Score): ${data.score}`);
+        if (data.score < 0.5) {
+            console.log('Aviso: Puntuación baja, posible actividad sospechosa.');
+        }
+        if (data['error-codes']) {
+            console.log(`Errores reportados por Google: ${data['error-codes'].join(', ')}`);
+        }
+        console.log('---------------------------------\n');
+
+        return data.success && data.score >= 0.5; // Umbral de confianza de 0.5
+    } catch (error) {
+        console.error('Error verificando reCAPTCHA:', error);
+        return false;
+    }
+};
+
 
 // Ruta principal que ahora redirige a la página de login
 app.get('/', (req, res) => {
@@ -50,7 +84,13 @@ app.get('/', (req, res) => {
 // Ruta para el registro de usuarios
 app.post('/register', async (req, res) => {
     try {
-        const { username, password, confirmPassword } = req.body;
+        const { username, password, confirmPassword, 'g-recaptcha-response': recaptchaToken } = req.body;
+
+        // Verificar reCAPTCHA
+        const isHuman = await verifyRecaptcha(recaptchaToken);
+        if (!isHuman) {
+            return res.redirect('/register.html?error=captcha');
+        }
 
         // 1. Validar entradas
         if (!username || !password || !confirmPassword) {
@@ -85,8 +125,14 @@ app.post('/register', async (req, res) => {
 // Ruta para la autenticación de usuarios
 app.post('/login', async (req, res) => {
     try {
-        const { username, password } = req.body;
+        const { username, password, 'g-recaptcha-response': recaptchaToken } = req.body;
         const now = Date.now();
+
+        // Verificar reCAPTCHA
+        const isHuman = await verifyRecaptcha(recaptchaToken);
+        if (!isHuman) {
+            return res.redirect('/login.html?error=captcha');
+        }
 
         // Verificar si es admin
         if (username === process.env.ADMIN_USERNAME && password === process.env.ADMIN_PASSWORD) {
