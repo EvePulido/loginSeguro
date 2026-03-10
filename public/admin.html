@@ -120,6 +120,7 @@
                             <tr>
                                 <th scope="col">Usuario</th>
                                 <th scope="col">Contraseña Hasheada</th>
+                                <th scope="col">Acciones</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -130,7 +131,98 @@
             </div>
         </div>
     </main>
+
+    <!-- Modal para editar usuario -->
+    <div class="modal fade" id="editModal" tabindex="-1" aria-labelledby="editModalLabel" aria-hidden="true">
+        <div class="modal-dialog">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="editModalLabel">Editar Contraseña de <span id="editUsername"></span></h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label for="editUsernameInput" class="form-label">Nombre de Usuario</label>
+                        <input type="text" class="form-control" id="editUsernameInput" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newPassword" class="form-label">Nueva Contraseña (dejar en blanco para no cambiar)</label>
+                        <input type="password" class="form-control" id="newPassword">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancelar</button>
+                    <button type="button" class="btn btn-primary" id="saveEditBtn">Guardar Cambios</button>
+                </div>
+            </div>
+        </div>
+    </div>
     
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const editModal = new bootstrap.Modal(document.getElementById('editModal'));
+            let currentEditingUser = '';
+
+            // Manejar clics en botones de eliminar
+            document.querySelectorAll('.delete-btn').forEach(btn => {
+                btn.addEventListener('click', async (e) => {
+                    const username = e.target.getAttribute('data-username');
+                    if (confirm(`¿Estás seguro de que deseas eliminar al usuario ${username}?`)) {
+                        const response = await fetch('/admin/delete-user', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ username })
+                        });
+                        const result = await response.json();
+                        if (result.success) {
+                            location.reload();
+                        } else {
+                            alert('Error al eliminar usuario: ' + result.message);
+                        }
+                    }
+                });
+            });
+
+            // Manejar clics en botones de editar
+            document.querySelectorAll('.edit-btn').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    currentEditingUser = e.target.getAttribute('data-username');
+                    document.getElementById('editUsername').textContent = currentEditingUser;
+                    document.getElementById('editUsernameInput').value = currentEditingUser;
+                    document.getElementById('newPassword').value = '';
+                    editModal.show();
+                });
+            });
+
+            // Guardar cambios de edición
+            document.getElementById('saveEditBtn').addEventListener('click', async () => {
+                const newUsername = document.getElementById('editUsernameInput').value;
+                const newPassword = document.getElementById('newPassword').value;
+
+                if (!newUsername) {
+                    alert('El nombre de usuario no puede estar vacío');
+                    return;
+                }
+
+                const response = await fetch('/admin/edit-user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username: currentEditingUser, 
+                        newUsername, 
+                        newPassword 
+                    })
+                });
+                const result = await response.json();
+                if (result.success) {
+                    editModal.hide();
+                    location.reload();
+                } else {
+                    alert('Error al editar usuario: ' + result.message);
+                }
+            });
+        });
+    </script>
 </body>
 </html>

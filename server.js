@@ -11,6 +11,7 @@ const port = 3000;
 
 // Middleware para parsear los datos de los formularios
 app.use(bodyParser.urlencoded({ extended: true }));
+app.use(express.json());
 
 // Servir archivos estáticos desde la carpeta 'public'
 app.use(express.static(path.join(__dirname, 'public')));
@@ -191,6 +192,10 @@ app.get('/admin', checkAdmin, (req, res) => {
         tableRows += `<tr>
             <td>${user}</td>
             <td>${data.passwordHash}</td>
+            <td>
+                <button class="btn btn-sm btn-warning edit-btn" data-username="${user}">Editar</button>
+                <button class="btn btn-sm btn-danger delete-btn" data-username="${user}">Eliminar</button>
+            </td>
         </tr>`;
     }
 
@@ -210,6 +215,53 @@ app.get('/admin', checkAdmin, (req, res) => {
     });
 });
 
+// Ruta para eliminar un usuario
+app.post('/admin/delete-user', checkAdmin, (req, res) => {
+    const { username } = req.body;
+    if (users[username]) {
+        delete users[username];
+        res.json({ success: true });
+    } else {
+        res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    }
+});
+
+// Ruta para editar usuario (nombre y/o contraseña)
+app.post('/admin/edit-user', checkAdmin, async (req, res) => {
+    const { username, newUsername, newPassword } = req.body;
+    
+    if (!users[username]) {
+        return res.status(404).json({ success: false, message: 'Usuario no encontrado' });
+    }
+
+    let currentUsername = username;
+
+    // 1. Cambiar el nombre de usuario si es diferente
+    if (newUsername && newUsername !== username) {
+        if (users[newUsername]) {
+            return res.status(400).json({ success: false, message: 'El nuevo nombre de usuario ya está en uso' });
+        }
+        // Transferir datos al nuevo nombre y eliminar el anterior
+        users[newUsername] = users[username];
+        delete users[username];
+        currentUsername = newUsername;
+        
+        // Limpiar intentos de login del nombre anterior si existen
+        if (loginAttempts[username]) {
+            loginAttempts[newUsername] = loginAttempts[username];
+            delete loginAttempts[username];
+        }
+    }
+
+    // 2. Cambiar la contraseña si se proporcionó una
+    if (newPassword && newPassword.length > 0) {
+        const saltRounds = 10;
+        const hashedPassword = await bcrypt.hash(newPassword, saltRounds);
+        users[currentUsername].passwordHash = hashedPassword;
+    }
+
+    res.json({ success: true });
+});
 
 // Iniciar el servidor
 app.listen(port, () => {
