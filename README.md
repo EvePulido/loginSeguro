@@ -208,14 +208,25 @@ Sigue estos pasos para ejecutar el proyecto en tu entorno local:
 loginSeguro/
 ├── .env                # Variables de entorno (NO se sube al repo)
 ├── .gitignore          # Archivos ignorados por Git
+├── db.js               # Conexión y configuración de la base de datos
 ├── package.json        # Dependencias y scripts
-├── server.js           # Lógica del servidor (Entry point)
-└── public/             # Archivos estáticos (Frontend)
-    ├── login.html      # Página de inicio de sesión
-    ├── register.html   # Página de registro
-    ├── welcome.html    # Dashboard de usuario
-    └── admin.html      # Dashboard de administrador
+├── server.js           # Lógica principal del servidor (Entry point)
+├── public/             # Archivos estáticos (Frontend)
+│   ├── admin.html      # Dashboard de administrador
+│   ├── login.html      # Página de inicio de sesión
+│   ├── register.html   # Página de registro
+│   └── welcome.html    # Dashboard de usuario
+└── routes/             # Definición de rutas de la aplicación
+    ├── admin.js        # Rutas administrativas
+    └── auth.js         # Rutas de autenticación
 ```
+
+## 👥 Integrantes
+
+*   **Juan Pablo Jiménez Ramírez**
+*   **Ian Anthony Pérez González**
+*   **Evelyn Damarys Pulido Méndez**
+*   **Omar Imanol Rodríguez Rodríguez**
 
 ---
 Desarrollado con ❤️ para un desarrollo seguro.
